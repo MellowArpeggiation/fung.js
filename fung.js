@@ -6,7 +6,7 @@
     const debugMode = false;
 
     // Agent options
-    const agentCount = 16000;
+    const agentCount = 1000;
     const moveSpeed = 50; // pixels per second - should not exceed minimum framerate
     const turnSpeed = 12; // radians per second
 
@@ -17,7 +17,7 @@
     // Diffusion options
     const evaporationRate = 0.18;
     let diffusionRate = 32;
-    const densitySpread = 0.8;
+    const densitySpread = 0.6;
 
     // Color options
     let fromColor = [0, 1, 0, 1];
@@ -166,6 +166,7 @@
                 dt: dt,
                 resolution: [gl.canvas.width, gl.canvas.height],
                 dimensions: [640, 360], // Buffer size for diffusion is restricted and stretched to full resolution
+                scale: gl.canvas.width / 640,
 
                 agentCount: agentCount,
                 moveSpeed: moveSpeed,
