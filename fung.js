@@ -67,7 +67,7 @@
             return;
         }
 
-        if (!gl.getExtension("OES_texture_float") || !gl.getExtension("OES_texture_float_linear")) {
+        if (!gl.getExtension("OES_texture_float") || !gl.getExtension("WEBGL_color_buffer_float")) {
             alert("Your browser does not support floating point textures");
             return;
         }
