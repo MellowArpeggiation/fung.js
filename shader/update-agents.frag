@@ -4,6 +4,7 @@ precision mediump float;
 
 uniform sampler2D previousAgentFrame;
 uniform sampler2D previousDiffuseFrame;
+uniform sampler2D wallMask;
 
 uniform float time;
 uniform float dt;
@@ -30,7 +31,7 @@ vec2 sense(vec2 pos, float angle, float angleOffset) {
 }
 
 void main() {
-    float aspect = resolution.x / resolution.y;
+    float scale = resolution.x / dimensions.x;
 
     float agentId = gl_FragCoord.x / agentCount;
     vec4 agentCoords = texture2D(previousAgentFrame, vec2(agentId, 0));
@@ -44,12 +45,18 @@ void main() {
 
     float random = rand(agentPosition + gl_FragCoord.xy + time);
 
-    // Move the agent
-    agentPosition = vec2(agentPosition.x + (cos(agentRotation) / resolution.x) * moveSpeed * dt, agentPosition.y + (sin(agentRotation) / resolution.y) * moveSpeed * dt);
-    if (agentPosition.x < 0.0 || agentPosition.x > 1.0 || agentPosition.y < 0.0 || agentPosition.y > 1.0) {
+    // Attempt to move the agent
+    vec2 newPosition = vec2(agentPosition.x + (cos(agentRotation) / resolution.x) * moveSpeed * dt, agentPosition.y + (sin(agentRotation) / resolution.y) * moveSpeed * dt);
+
+    // Check if we're now in a wall
+    float wall = texture2D(wallMask, newPosition * scale).r;
+
+    if (wall > 0.5 || newPosition.x < 0.0 || newPosition.x > 1.0 || newPosition.y < 0.0 || newPosition.y > 1.0) {
         // Bounce randomly
         agentRotation = random * TAU;
     } else {
+        agentPosition = newPosition;
+
         if (weightForward > densitySpread) {
             agentRotation = fract((agentRotation + (random - 0.5) * turnSpeed * dt) / TAU) * TAU;
         } else if (weightForward > weightLeft && weightForward > weightRight) {
@@ -64,6 +71,7 @@ void main() {
             agentRotation = fract((agentRotation + (random - 0.5) * turnSpeed * dt) / TAU) * TAU;
         }
     }
+
 
     gl_FragColor = vec4(agentPosition, agentRotation / TAU, 1);
 }

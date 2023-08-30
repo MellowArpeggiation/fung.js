@@ -43,18 +43,22 @@
 
         const promises = shadersToLoad.map(location => fetch('/shader/' + location).then(response => response.text()));
 
-        Promise.all(promises)
-            .then(sources => {
-                const shaders = {};
-                sources.forEach((source, i) => shaders[shadersToLoad[i]] = source);
-                init(shaders);
-            })
-            .catch(error => {
-                console.error(error);
-            });
+        const wallMask = new Image();
+        wallMask.src = '/img/map.png';
+        wallMask.onload = function () {
+            Promise.all(promises)
+                .then(sources => {
+                    const shaders = {};
+                    sources.forEach((source, i) => shaders[shadersToLoad[i]] = source);
+                    init(shaders, wallMask);
+                })
+                .catch(error => {
+                    console.error(error);
+                });
+        }
     }
 
-    function init(sources) {
+    function init(sources, wallMask) {
         // Get A WebGL context
         var canvas = document.querySelector("#main");
         var gl = canvas.getContext("webgl");
@@ -98,6 +102,7 @@
             diffuseTexture2: { minMag: gl.NEAREST, width: 640, height: 360 },
             golTexture1: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
             golTexture2: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
+            wallMask: { minMag: gl.NEAREST, src: wallMask, flipY: true },
         });
 
 
@@ -109,6 +114,8 @@
         const uniforms = {
             time: 0,
             resolution: [gl.canvas.width, gl.canvas.height],
+            dimensions: [640, 360],
+            wallMask: textures.wallMask,
         };
     
         // Draw a coloured quad
@@ -153,6 +160,8 @@
                 previousAgentFrame: flipFlop ? textures.agentTexture2 : textures.agentTexture1,
                 previousDiffuseFrame: flipFlop ? textures.diffuseTexture2 : textures.diffuseTexture1,
                 previousGolFrame: flipFlop ? textures.golTexture2 : textures.golTexture1,
+                wallMask: textures.wallMask,
+
                 time: time,
                 dt: dt,
                 resolution: [gl.canvas.width, gl.canvas.height],
