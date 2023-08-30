@@ -3,6 +3,8 @@
     // Eventually this'll be turned into a React component
     // Until then, we'll just add a bunch of inputs here
 
+    const debugMode = false;
+
     // Agent options
     const agentCount = 16000;
     const moveSpeed = 50; // pixels per second - should not exceed minimum framerate
@@ -14,8 +16,12 @@
 
     // Diffusion options
     const evaporationRate = 0.18;
-    const diffusionRate = 32;
+    let diffusionRate = 32;
     const densitySpread = 0.8;
+
+    // Color options
+    let fromColor = [0, 1, 0, 1];
+    let toColor = [1, 1, 0, 1];
 
 
     const minFrameRate = 50;
@@ -32,6 +38,7 @@
             'diffuse.frag',
             'golstep.frag',
             'drawgol.frag',
+            'fung.frag',
         ];
 
         const promises = shadersToLoad.map(location => fetch('/shader/' + location).then(response => response.text()));
@@ -68,6 +75,8 @@
         const diffuseProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['diffuse.frag']]);
         const golProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['golstep.frag']]);
         const drawGolProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['drawgol.frag']]);
+        const fungProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['fung.frag']])
+
 
         const quadBufferInfo = twgl.createBufferInfoFromArrays(gl, {
             a_position: [-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0],
@@ -139,7 +148,6 @@
             lastTime = time;
 
             flipFlop = !flipFlop;
-            // twgl.resizeCanvasToDisplaySize(gl.canvas);
         
             const uniforms = {
                 previousAgentFrame: flipFlop ? textures.agentTexture2 : textures.agentTexture1,
@@ -159,6 +167,9 @@
 
                 diffusionRate: diffusionRate,
                 evaporationRate: evaporationRate,
+
+                fromColor: fromColor,
+                toColor: toColor,
             };
 
             // Draw to our agent position data buffer
@@ -215,20 +226,20 @@
             twgl.bindFramebufferInfo(gl);
             gl.clear(gl.COLOR_BUFFER_BIT);
 
-            // Just drawing textures from here
-            gl.useProgram(texProgramInfo.program);
-            twgl.setBuffersAndAttributes(gl, texProgramInfo, quadBufferInfo);
-            twgl.setUniforms(texProgramInfo, uniforms);
-
-            // Draw the diffuse buffer (as debug)
-            gl.bindTexture(gl.TEXTURE_2D, flipFlop ? textures.diffuseTexture2 : textures.diffuseTexture1);
-            twgl.drawBufferInfo(gl, quadBufferInfo);
-
-            // Draw the GoL buffer - final output!
-            gl.blendFunc(gl.ONE, gl.ONE);
-            gl.bindTexture(gl.TEXTURE_2D, flipFlop ? textures.golTexture2 : textures.golTexture1);
-            twgl.drawBufferInfo(gl, quadBufferInfo);
-            gl.blendFunc(gl.ONE, gl.ZERO);
+            if (debugMode) {
+                // Draw the diffuse buffer (as debug)
+                gl.useProgram(texProgramInfo.program);
+                twgl.setBuffersAndAttributes(gl, texProgramInfo, quadBufferInfo);
+                twgl.setUniforms(texProgramInfo, uniforms);
+                gl.bindTexture(gl.TEXTURE_2D, flipFlop ? textures.diffuseTexture2 : textures.diffuseTexture1);
+                twgl.drawBufferInfo(gl, quadBufferInfo);
+            } else {
+                // Draw the GoL buffer with colours - final output!
+                gl.useProgram(fungProgramInfo.program);
+                twgl.setBuffersAndAttributes(gl, fungProgramInfo, quadBufferInfo);
+                twgl.setUniforms(fungProgramInfo, uniforms);
+                twgl.drawBufferInfo(gl, quadBufferInfo);
+            }
 
 
 
