@@ -1,20 +1,20 @@
 precision mediump float;
 
 uniform sampler2D previousDiffuseFrame;
-uniform vec2 resolution;
+uniform vec2 dimensions;
 
 uniform float dt;
 uniform float diffusionRate;
 uniform float evaporationRate;
 
 void main() {
-    vec2 position = gl_FragCoord.xy / resolution;
+    vec2 position = gl_FragCoord.xy / dimensions;
     vec4 color = texture2D(previousDiffuseFrame, position);
 
     float sum = color.r;
     float dx, dy;
-    float ox = 1.0 / resolution.x;
-    float oy = 1.0 / resolution.y;
+    float ox = 1.0 / dimensions.x;
+    float oy = 1.0 / dimensions.y;
     float total = position.y - oy * 3.0 < 0.0 ? 4.0 : 6.0;
     
     dy = position.y + oy;
