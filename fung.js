@@ -58,16 +58,34 @@
         }
     }
 
-    // Browsers all do this fucky thing where they say they support writing to floating point textures
-    // But they don't actually support it and don't even fallback to half-floats where supported
+
+    // iOS Safari does this fucky thing where they say they support writing to floating point textures
+    // But they don't actually support it and don't even fallback to half-floats that ARE supported
     // and also don't report any errors or give you any fucking information at all, they just truck on with 8 bits (OR LESS!) of precision
     // Yes, I tried gl.checkFramebufferStatus, it reports gl.FRAMEBUFFER_COMPLETE in all tests
     // So we have to just... guess
-    function getFloatSupport(gl) {
-        // Guess we're on a mobile device by checking if the smaller dimension is less than 720
-        const smallerDimension = Math.min(window.screen.width, window.screen.height);
-        return smallerDimension >= 720;
+    function getHighestFloat(gl) {
+        const isIOS = /(iPad|iPhone|iPod)/g.test(navigator.userAgent);
+        const isAppleDevice = navigator.userAgent.includes('Macintosh');
+        const isTouchScreen = navigator.maxTouchPoints >= 1;
+        if (isIOS || (isAppleDevice && isTouchScreen)) {
+            const halfFloatExtension = gl.getExtension("OES_texture_half_float");
+            return halfFloatExtension.HALF_FLOAT_OES;
+        }
+
+        const floatExtension = gl.getExtension("OES_texture_float");
+        if (floatExtension) {
+            return gl.FLOAT;
+        }
+
+        const halfFloatExtension = gl.getExtension("OES_texture_half_float");
+        if (halfFloatExtension) {
+            return halfFloatExtension.HALF_FLOAT_OES;
+        }
+
+        return null;
     }
+
 
     function init(sources, wallMask) {
         // Get A WebGL context
@@ -78,13 +96,12 @@
             return;
         }
 
-        if (!gl.getExtension("OES_texture_float")) {
+        const floatFormat = getHighestFloat(gl);
+        if (floatFormat == null) {
             alert("Your browser does not support floating point textures");
             return;
         }
 
-        const hfExt = gl.getExtension("OES_texture_half_float");
-        const supportsFloat = getFloatSupport(gl);
 
         const texProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['draw.frag']]);
         const initProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['draw-rand.frag']]);
@@ -110,8 +127,8 @@
         })
 
         const textures = twgl.createTextures(gl, {
-            agentTexture1: { minMag: gl.NEAREST, width: agentCount, height: 1, type: supportsFloat ? gl.FLOAT : hfExt.HALF_FLOAT_OES },
-            agentTexture2: { minMag: gl.NEAREST, width: agentCount, height: 1, type: supportsFloat ? gl.FLOAT : hfExt.HALF_FLOAT_OES },
+            agentTexture1: { minMag: gl.NEAREST, width: agentCount, height: 1, type: floatFormat },
+            agentTexture2: { minMag: gl.NEAREST, width: agentCount, height: 1, type: floatFormat },
             diffuseTexture1: { width: 640, height: 360 },
             diffuseTexture2: { width: 640, height: 360 },
             golTexture1: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
