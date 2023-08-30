@@ -23,7 +23,7 @@ void main() {
             color = vec4(1.0);
         }
     } else {
-        if (neighbors > 2.0 && neighbors < 4.0) {
+        if ((neighbors > 2.0 && neighbors < 4.0) || (neighbors > 5.0 && neighbors < 7.0)) {
             color = vec4(1.0);
         }
     }

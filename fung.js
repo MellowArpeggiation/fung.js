@@ -1,5 +1,26 @@
 (function () {
 
+    // Eventually this'll be turned into a React component
+    // Until then, we'll just add a bunch of inputs here
+
+    // Agent options
+    const agentCount = 16000;
+    const moveSpeed = 50; // pixels per second - should not exceed minimum framerate
+    const turnSpeed = 12; // radians per second
+
+    // Agent sensing options
+    const senseDistance = 8; // pixels
+    const senseAngle = 0.4; // radians
+
+    // Diffusion options
+    const evaporationRate = 0.18;
+    const diffusionRate = 32;
+    const densitySpread = 0.8;
+
+
+    const minFrameRate = 50;
+
+
     function main() {
         const shadersToLoad = [
             'draw.vert',
@@ -35,7 +56,7 @@
             return;
         }
 
-        if (!gl.getExtension("OES_texture_float")) {
+        if (!gl.getExtension("OES_texture_float") || !gl.getExtension("OES_texture_float_linear")) {
             alert("Your browser does not support floating point textures");
             return;
         }
@@ -52,7 +73,6 @@
             a_position: [-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0],
         });
 
-        const agentCount = 16384;
         const agentIds = [];
         for (let i = 0; i < agentCount; i++) {
             agentIds.push(i);
@@ -109,8 +129,15 @@
         gl.enable(gl.BLEND)
         gl.clearColor(0, 0, 0, 1);
 
+        const minDt = 1/minFrameRate;
+
+        let lastTime = 0;
         let flipFlop = false;
         function render(time) {
+            time = time * 0.001;
+            let dt = Math.min(time - lastTime, minDt);
+            lastTime = time;
+
             flipFlop = !flipFlop;
             // twgl.resizeCanvasToDisplaySize(gl.canvas);
         
@@ -118,10 +145,20 @@
                 previousAgentFrame: flipFlop ? textures.agentTexture2 : textures.agentTexture1,
                 previousDiffuseFrame: flipFlop ? textures.diffuseTexture2 : textures.diffuseTexture1,
                 previousGolFrame: flipFlop ? textures.golTexture2 : textures.golTexture1,
-                currentGolFrame: flipFlop ? textures.golTexture1 : textures.golTexture2,
-                time: time * 0.001,
-                agentCount: agentCount,
+                time: time,
+                dt: dt,
                 resolution: [gl.canvas.width, gl.canvas.height],
+                dimensions: [640, 360], // Buffer size for diffusion is restricted and stretched to full resolution
+
+                agentCount: agentCount,
+                moveSpeed: moveSpeed,
+                turnSpeed: turnSpeed,
+                senseDistance: senseDistance,
+                senseAngle: senseAngle,
+                densitySpread: densitySpread,
+
+                diffusionRate: diffusionRate,
+                evaporationRate: evaporationRate,
             };
 
             // Draw to our agent position data buffer
@@ -154,16 +191,6 @@
             twgl.setUniforms(diffuseProgramInfo, uniforms);
             twgl.drawBufferInfo(gl, quadBufferInfo);
 
-
-
-            // // Draw and subtract from our GoL backbuffer
-            // twgl.bindFramebufferInfo(gl, flipFlop ? golBuffer2 : golBuffer1);
-
-            // gl.useProgram(drawGolProgramInfo.program);
-            // twgl.setBuffersAndAttributes(gl, drawGolProgramInfo, quadBufferInfo);
-            // twgl.setUniforms(drawGolProgramInfo, uniforms);
-            // twgl.drawBufferInfo(gl, quadBufferInfo);
-
             
 
             // Run GoL sim!
@@ -174,15 +201,12 @@
             twgl.setUniforms(golProgramInfo, uniforms);
             twgl.drawBufferInfo(gl, quadBufferInfo);
 
-            // Draw to GoL after sim?
-            // BLENDS
-            gl.blendFunc(gl.ONE, gl.ONE);
-
+            // Draw to GoL after sim
+            gl.blendFunc(gl.ONE, gl.SRC_ALPHA);
             gl.useProgram(drawGolProgramInfo.program);
             twgl.setBuffersAndAttributes(gl, drawGolProgramInfo, quadBufferInfo);
             twgl.setUniforms(drawGolProgramInfo, uniforms);
             twgl.drawBufferInfo(gl, quadBufferInfo);
-
             gl.blendFunc(gl.ONE, gl.ZERO);
 
 
@@ -201,11 +225,9 @@
             twgl.drawBufferInfo(gl, quadBufferInfo);
 
             // Draw the GoL buffer - final output!
-
             gl.blendFunc(gl.ONE, gl.ONE);
             gl.bindTexture(gl.TEXTURE_2D, flipFlop ? textures.golTexture2 : textures.golTexture1);
             twgl.drawBufferInfo(gl, quadBufferInfo);
-
             gl.blendFunc(gl.ONE, gl.ZERO);
 
 

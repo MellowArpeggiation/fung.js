@@ -3,6 +3,10 @@ precision mediump float;
 uniform sampler2D previousDiffuseFrame;
 uniform vec2 resolution;
 
+uniform float dt;
+uniform float diffusionRate;
+uniform float evaporationRate;
+
 void main() {
     vec2 position = gl_FragCoord.xy / resolution;
     vec4 color = texture2D(previousDiffuseFrame, position);
@@ -40,8 +44,8 @@ void main() {
 
     float blur = sum / total;
 
-    float diffused = mix(color.r, blur, 0.4);
-    float evaporated = clamp(diffused - 0.0012, 0.0, 1.0);
+    float diffused = mix(color.r, blur, diffusionRate * dt);
+    float evaporated = clamp(diffused - evaporationRate * dt, 0.0, 1.0);
 
     gl_FragColor = vec4(evaporated, 0, 0, 1);
 }
