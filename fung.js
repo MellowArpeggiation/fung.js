@@ -58,6 +58,17 @@
         }
     }
 
+    // Browsers all do this fucky thing where they say they support writing to floating point textures
+    // But they don't actually support it and don't even fallback to half-floats where supported
+    // and also don't report any errors or give you any fucking information at all, they just truck on with 8 bits (OR LESS!) of precision
+    // Yes, I tried gl.checkFramebufferStatus, it reports gl.FRAMEBUFFER_COMPLETE in all tests
+    // So we have to just... guess
+    function getFloatSupport(gl) {
+        // Guess we're on a mobile device by checking if the smaller dimension is less than 720
+        const smallerDimension = Math.min(window.screen.width, window.screen.height);
+        return smallerDimension >= 720;
+    }
+
     function init(sources, wallMask) {
         // Get A WebGL context
         var canvas = document.querySelector("#main");
@@ -67,10 +78,13 @@
             return;
         }
 
-        if (!gl.getExtension("OES_texture_float") || !gl.getExtension("WEBGL_color_buffer_float")) {
+        if (!gl.getExtension("OES_texture_float")) {
             alert("Your browser does not support floating point textures");
             return;
         }
+
+        const hfExt = gl.getExtension("OES_texture_half_float");
+        const supportsFloat = getFloatSupport(gl);
 
         const texProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['draw.frag']]);
         const initProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['draw-rand.frag']]);
@@ -96,8 +110,8 @@
         })
 
         const textures = twgl.createTextures(gl, {
-            agentTexture1: { minMag: gl.NEAREST, width: agentCount, height: 1, type: gl.FLOAT },
-            agentTexture2: { minMag: gl.NEAREST, width: agentCount, height: 1, type: gl.FLOAT },
+            agentTexture1: { minMag: gl.NEAREST, width: agentCount, height: 1, type: supportsFloat ? gl.FLOAT : hfExt.HALF_FLOAT_OES },
+            agentTexture2: { minMag: gl.NEAREST, width: agentCount, height: 1, type: supportsFloat ? gl.FLOAT : hfExt.HALF_FLOAT_OES },
             diffuseTexture1: { width: 640, height: 360 },
             diffuseTexture2: { width: 640, height: 360 },
             golTexture1: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
