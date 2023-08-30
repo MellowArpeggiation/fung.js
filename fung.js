@@ -98,8 +98,8 @@
         const textures = twgl.createTextures(gl, {
             agentTexture1: { minMag: gl.NEAREST, width: agentCount, height: 1, type: gl.FLOAT },
             agentTexture2: { minMag: gl.NEAREST, width: agentCount, height: 1, type: gl.FLOAT },
-            diffuseTexture1: { minMag: gl.NEAREST, width: 640, height: 360 },
-            diffuseTexture2: { minMag: gl.NEAREST, width: 640, height: 360 },
+            diffuseTexture1: { width: 640, height: 360 },
+            diffuseTexture2: { width: 640, height: 360 },
             golTexture1: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
             golTexture2: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
             wallMask: { minMag: gl.NEAREST, src: wallMask, flipY: true },
