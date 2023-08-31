@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { bindFramebufferInfo, createBufferInfoFromArrays, createFramebufferInfo, createProgramInfo, createTextures, drawBufferInfo, setBuffersAndAttributes, setUniforms } from "twgl.js";
+import { bindFramebufferInfo, createBufferInfoFromArrays, createFramebufferInfo, createProgramInfo, createTextures, drawBufferInfo, setBuffersAndAttributes, setUniforms, ProgramInfo, BufferInfo, FramebufferInfo } from "twgl.js";
 
 import vDraw from "../../shaders/draw.vert";
 import fDraw from "../../shaders/draw.frag";
@@ -15,32 +15,57 @@ import fFung from "../../shaders/fung.frag";
 import wallMask from "../../../img/map.png";
 
 export interface FungProps {
-    fromColor: string;
-    toColor: string;
+    fromColor?: string;
+    toColor?: string;
+
+    debug?: boolean
+
+    agentCount?: number,
+    moveSpeed?: number,
+    turnSpeed?: number,
+
+    senseDistance?: number,
+    senseAngle?: number,
+
+    diffusionRate?: number,
+    evaporationRate?: number,
+    densitySpread?: number,
 }
 
+const Defaults: FungProps = {
+    fromColor: "lime",
+    toColor: "yellow",
+
+    debug: false,
+
+    agentCount: 2000,
+    moveSpeed: 50, // pixels per second - should not exceed minimum framerate
+    turnSpeed: 12, // radians per second
+
+    senseDistance: 8,
+    senseAngle: 0.4,
+
+    diffusionRate: 32,
+    evaporationRate: 0.18,
+    densitySpread: 0.8,
+}
+
+type GLInfo = {
+    programs: { [key: string]: ProgramInfo },
+    buffers: { [key: string]: BufferInfo },
+    textures: { [key: string]: WebGLTexture },
+    frameBuffers: { [key: string]: FramebufferInfo },
+};
+
 const FungCanvas = (props: FungProps) => {
+    props = { ...Defaults, ...props};
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
-
-
-    const debugMode = false;
-
-    // Agent options
-    const agentCount = 2000;
-    const moveSpeed = 50; // pixels per second - should not exceed minimum framerate
-    const turnSpeed = 12; // radians per second
-
-    // Agent sensing options
-    const senseDistance = 8; // pixels
-    const senseAngle = 0.4; // radians
-
-    // Diffusion options
-    const evaporationRate = 0.18;
-    let diffusionRate = 32;
-    const densitySpread = 0.8;
+    const glInfoRef = useRef<GLInfo>();
+    const flipFlopRef = useRef<boolean>(false);
+    const lastTimeRef = useRef<number>(0);
 
     const minFrameRate = 50;
-
 
 
     // iOS Safari does this fucky thing where they say they support writing to floating point textures
@@ -48,7 +73,7 @@ const FungCanvas = (props: FungProps) => {
     // and also don't report any errors or give you any fucking information at all, they just truck on with 8 bits (OR LESS!) of precision
     // Yes, I tried gl.checkFramebufferStatus, it reports gl.FRAMEBUFFER_COMPLETE in all tests
     // So we have to just... guess
-    function getHighestFloat(gl: WebGLRenderingContext) {
+    const getHighestFloat = (gl: WebGLRenderingContext) => {
         const isIOS = /(iPad|iPhone|iPod)/g.test(navigator.userAgent);
         const isAppleDevice = navigator.userAgent.includes('Macintosh');
         const isTouchScreen = navigator.maxTouchPoints >= 1;
@@ -68,11 +93,11 @@ const FungCanvas = (props: FungProps) => {
         }
 
         return null;
-    }
+    };
 
-    const toRGBA = (color: string) => {
+    const toRGBA = (color?: string): number[] => {
         const div = document.createElement('div');
-        div.style.backgroundColor = color;
+        div.style.backgroundColor = color || 'none';
         document.body.appendChild(div);
         let rgba = getComputedStyle(div).getPropertyValue('background-color');
         div.remove();
@@ -86,7 +111,98 @@ const FungCanvas = (props: FungProps) => {
         return match.map(a => {
             return (+a) / 255
         });
-    }
+    };
+
+    const init = (gl: WebGLRenderingContext): GLInfo | undefined => {
+        // Create shader programs
+        const programInfo = {
+            tex: createProgramInfo(gl, [vDraw, fDraw]),
+            init: createProgramInfo(gl, [vDraw, fDrawRand]),
+            move: createProgramInfo(gl, [vDraw, fUpdateAgents]),
+            agent: createProgramInfo(gl, [vDrawAgents, fDrawAgents]),
+            diffuse: createProgramInfo(gl, [vDraw, fDiffuse]),
+            gol: createProgramInfo(gl, [vDraw, fGolStep]),
+            drawGol: createProgramInfo(gl, [vDraw, fDrawGol]),
+            fung: createProgramInfo(gl, [vDraw, fFung]),
+        };
+
+
+        // Create data buffers
+        const agentIds = [];
+        for (let i = 0; i < (props.agentCount || 2000); i++) {
+            agentIds.push(i);
+        }
+
+        const bufferInfo = {
+            quad: createBufferInfoFromArrays(gl, {
+                a_position: [-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0],
+            }),
+            agent: createBufferInfoFromArrays(gl, {
+                agentId: { numComponents: 1, data: agentIds},
+            }),
+        };
+
+
+        // Create textures
+        const floatFormat = getHighestFloat(gl);
+        if (floatFormat == null) {
+            alert("Your browser does not support floating point textures");
+            return;
+        }
+
+        const textures = createTextures(gl, {
+            agentTexture1: { minMag: gl.NEAREST, width: props.agentCount, height: 1, type: floatFormat },
+            agentTexture2: { minMag: gl.NEAREST, width: props.agentCount, height: 1, type: floatFormat },
+            diffuseTexture1: { width: 640, height: 360 },
+            diffuseTexture2: { width: 640, height: 360 },
+            golTexture1: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
+            golTexture2: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
+            wallMask: { minMag: gl.NEAREST, src: wallMask, flipY: 1 },
+        });
+
+
+        // Create framebuffers for rendering to
+        const agentBuffer1 = createFramebufferInfo(gl, [{ attachment: textures.agentTexture1, width: props.agentCount, height: 1 }]);
+        const agentBuffer2 = createFramebufferInfo(gl, [{ attachment: textures.agentTexture2, width: props.agentCount, height: 1 }]);
+        
+        // Before we start, we'll initialise the agent data to something random
+        const uniforms = {
+            time: 0,
+            resolution: [gl.canvas.width, gl.canvas.height],
+            dimensions: [640, 360],
+            wallMask: textures.wallMask,
+        };
+    
+        // Draw a randomly coloured quad to initialise agents
+        gl.useProgram(programInfo.init.program);
+        setBuffersAndAttributes(gl, programInfo.init, bufferInfo.quad);
+        setUniforms(programInfo.init, uniforms);
+        drawBufferInfo(gl, bufferInfo.quad);
+
+
+        const diffuseBuffer1 = createFramebufferInfo(gl, [{ attachment: textures.diffuseTexture1 }]);
+        const diffuseBuffer2 = createFramebufferInfo(gl, [{ attachment: textures.diffuseTexture2 }]);
+
+        const golBuffer1 = createFramebufferInfo(gl, [{ attachment: textures.golTexture1 }]);
+        const golBuffer2 = createFramebufferInfo(gl, [{ attachment: textures.golTexture2 }]);
+
+        const frameBuffers = {
+            agent1: agentBuffer1,
+            agent2: agentBuffer2,
+            diffuse1: diffuseBuffer1,
+            diffuse2: diffuseBuffer2,
+            gol1: golBuffer1,
+            gol2: golBuffer2,
+        };
+
+        return {
+            programs: programInfo,
+            buffers: bufferInfo,
+            textures: textures,
+            frameBuffers: frameBuffers,
+        }
+    };
+
 
     useEffect(() => {
         const fromColor = toRGBA(props.fromColor);
@@ -99,80 +215,16 @@ const FungCanvas = (props: FungProps) => {
             return;
         }
 
-        const floatFormat = getHighestFloat(gl);
-        if (floatFormat == null) {
-            alert("Your browser does not support floating point textures");
+        // Initialise a new buffer set, unless we already have made them previously
+        glInfoRef.current = glInfoRef.current || init(gl);
+
+        if (glInfoRef.current == null) {
+            alert("Failed to initialise buffers");
             return;
         }
 
-        const texProgramInfo = createProgramInfo(gl, [vDraw, fDraw]);
-        const initProgramInfo = createProgramInfo(gl, [vDraw, fDrawRand]);
-        const moveProgramInfo = createProgramInfo(gl, [vDraw, fUpdateAgents]);
-        const agentProgramInfo = createProgramInfo(gl, [vDrawAgents, fDrawAgents]);
-        const diffuseProgramInfo = createProgramInfo(gl, [vDraw, fDiffuse]);
-        const golProgramInfo = createProgramInfo(gl, [vDraw, fGolStep]);
-        const drawGolProgramInfo = createProgramInfo(gl, [vDraw, fDrawGol]);
-        const fungProgramInfo = createProgramInfo(gl, [vDraw, fFung]);
-
-        
-        const quadBufferInfo = createBufferInfoFromArrays(gl, {
-            a_position: [-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0],
-        });
-
-        const agentIds = [];
-        for (let i = 0; i < agentCount; i++) {
-            agentIds.push(i);
-        }
-
-        const agentBufferInfo = createBufferInfoFromArrays(gl, {
-            agentId: { numComponents: 1, data: agentIds},
-        })
-
-        const textures = createTextures(gl, {
-            agentTexture1: { minMag: gl.NEAREST, width: agentCount, height: 1, type: floatFormat },
-            agentTexture2: { minMag: gl.NEAREST, width: agentCount, height: 1, type: floatFormat },
-            diffuseTexture1: { width: 640, height: 360 },
-            diffuseTexture2: { width: 640, height: 360 },
-            golTexture1: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
-            golTexture2: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
-            wallMask: { minMag: gl.NEAREST, src: wallMask, flipY: 1 },
-        });
-
-
-
-        const agentBuffer1 = createFramebufferInfo(gl, [{ attachment: textures.agentTexture1, width: agentCount, height: 1 }]);
-        const agentBuffer2 = createFramebufferInfo(gl, [{ attachment: textures.agentTexture2, width: agentCount, height: 1 }]);
-        
-        // Before we start, we'll initialise the agent data to something random
-        const uniforms = {
-            time: 0,
-            resolution: [gl.canvas.width, gl.canvas.height],
-            dimensions: [640, 360],
-            wallMask: textures.wallMask,
-        };
-    
-        // Draw a coloured quad
-        gl.useProgram(initProgramInfo.program);
-        setBuffersAndAttributes(gl, initProgramInfo, quadBufferInfo);
-        setUniforms(initProgramInfo, uniforms);
-        drawBufferInfo(gl, quadBufferInfo);
-
-
-
-        const diffuseBuffer1 = createFramebufferInfo(gl, [{ attachment: textures.diffuseTexture1 }]);
-        const diffuseBuffer2 = createFramebufferInfo(gl, [{ attachment: textures.diffuseTexture2 }]);
-
-
-
-        const golBuffer1 = createFramebufferInfo(gl, [{ attachment: textures.golTexture1 }]);
-        const golBuffer2 = createFramebufferInfo(gl, [{ attachment: textures.golTexture2 }]);
-        
-        // // DEBUG - Initialise GoL to random
-        // gl.useProgram(initProgramInfo.program);
-        // setBuffersAndAttributes(gl, initProgramInfo, quadBufferInfo);
-        // setUniforms(initProgramInfo, uniforms);
-        // drawBufferInfo(gl, quadBufferInfo);
-
+        // Destructure for quick access
+        const {programs, buffers, textures, frameBuffers} = glInfoRef.current;
 
 
         gl.enable(gl.BLEND)
@@ -180,9 +232,8 @@ const FungCanvas = (props: FungProps) => {
 
         const minDt = 1/minFrameRate;
 
-        let lastTime = 0;
-        let flipFlop = false;
         let renderId: number;
+
         function render(time: number) {
             if (!gl) {
                 alert("WebGL has been disabled");
@@ -190,10 +241,11 @@ const FungCanvas = (props: FungProps) => {
             }
 
             time = time * 0.001;
-            let dt = Math.min(time - lastTime, minDt);
-            lastTime = time;
+            let dt = Math.min(time - lastTimeRef.current, minDt);
+            lastTimeRef.current = time;
 
-            flipFlop = !flipFlop;
+            flipFlopRef.current = !flipFlopRef.current;
+            const flipFlop = flipFlopRef.current;
         
             const uniforms = {
                 previousAgentFrame: flipFlop ? textures.agentTexture2 : textures.agentTexture1,
@@ -207,66 +259,66 @@ const FungCanvas = (props: FungProps) => {
                 dimensions: [640, 360], // Buffer size for diffusion is restricted and stretched to full resolution
                 scale: gl.canvas.width / 640,
 
-                agentCount: agentCount,
-                moveSpeed: moveSpeed,
-                turnSpeed: turnSpeed,
-                senseDistance: senseDistance,
-                senseAngle: senseAngle,
-                densitySpread: densitySpread,
+                agentCount: props.agentCount,
+                moveSpeed: props.moveSpeed,
+                turnSpeed: props.turnSpeed,
+                senseDistance: props.senseDistance,
+                senseAngle: props.senseAngle,
+                densitySpread: props.densitySpread,
 
-                diffusionRate: diffusionRate,
-                evaporationRate: evaporationRate,
+                diffusionRate: props.diffusionRate,
+                evaporationRate: props.evaporationRate,
 
                 fromColor: fromColor,
                 toColor: toColor,
             };
 
             // Draw to our agent position data buffer
-            bindFramebufferInfo(gl, flipFlop ? agentBuffer1 : agentBuffer2);
+            bindFramebufferInfo(gl, flipFlop ? frameBuffers.agent1 : frameBuffers.agent2);
         
             // Draw the agent buffer onto itself
             // This updates the agent positions, stored the results in a floating point texture!
-            gl.useProgram(moveProgramInfo.program);
-            setBuffersAndAttributes(gl, moveProgramInfo, quadBufferInfo);
-            setUniforms(moveProgramInfo, uniforms);
-            drawBufferInfo(gl, quadBufferInfo);
+            gl.useProgram(programs.move.program);
+            setBuffersAndAttributes(gl, programs.move, buffers.quad);
+            setUniforms(programs.move, uniforms);
+            drawBufferInfo(gl, buffers.quad);
 
 
 
             // Draw to our diffuse buffer
-            bindFramebufferInfo(gl, flipFlop ? diffuseBuffer2 : diffuseBuffer1);
+            bindFramebufferInfo(gl, flipFlop ? frameBuffers.diffuse2 : frameBuffers.diffuse1);
 
             // Draw the agent positions into the diffuse buffer and run the diffuse
-            gl.useProgram(agentProgramInfo.program);
-            setBuffersAndAttributes(gl, agentProgramInfo, agentBufferInfo);
-            setUniforms(agentProgramInfo, uniforms);
-            drawBufferInfo(gl, agentBufferInfo, gl.POINTS);
+            gl.useProgram(programs.agent.program);
+            setBuffersAndAttributes(gl, programs.agent, buffers.agent);
+            setUniforms(programs.agent, uniforms);
+            drawBufferInfo(gl, buffers.agent, gl.POINTS);
 
             // Draw to our diffuse back buffer
-            bindFramebufferInfo(gl, flipFlop ? diffuseBuffer1 : diffuseBuffer2);
+            bindFramebufferInfo(gl, flipFlop ? frameBuffers.diffuse1 : frameBuffers.diffuse2);
 
             // Run diffuse double buffered as quad
-            gl.useProgram(diffuseProgramInfo.program);
-            setBuffersAndAttributes(gl, diffuseProgramInfo, quadBufferInfo);
-            setUniforms(diffuseProgramInfo, uniforms);
-            drawBufferInfo(gl, quadBufferInfo);
+            gl.useProgram(programs.diffuse.program);
+            setBuffersAndAttributes(gl, programs.diffuse, buffers.quad);
+            setUniforms(programs.diffuse, uniforms);
+            drawBufferInfo(gl, buffers.quad);
 
             
 
             // Run GoL sim!
-            bindFramebufferInfo(gl, flipFlop ? golBuffer1 : golBuffer2);
+            bindFramebufferInfo(gl, flipFlop ? frameBuffers.gol1 : frameBuffers.gol2);
 
-            gl.useProgram(golProgramInfo.program);
-            setBuffersAndAttributes(gl, golProgramInfo, quadBufferInfo);
-            setUniforms(golProgramInfo, uniforms);
-            drawBufferInfo(gl, quadBufferInfo);
+            gl.useProgram(programs.gol.program);
+            setBuffersAndAttributes(gl, programs.gol, buffers.quad);
+            setUniforms(programs.gol, uniforms);
+            drawBufferInfo(gl, buffers.quad);
 
             // Draw to GoL after sim
             gl.blendFunc(gl.ONE, gl.SRC_ALPHA);
-            gl.useProgram(drawGolProgramInfo.program);
-            setBuffersAndAttributes(gl, drawGolProgramInfo, quadBufferInfo);
-            setUniforms(drawGolProgramInfo, uniforms);
-            drawBufferInfo(gl, quadBufferInfo);
+            gl.useProgram(programs.drawGol.program);
+            setBuffersAndAttributes(gl, programs.drawGol, buffers.quad);
+            setUniforms(programs.drawGol, uniforms);
+            drawBufferInfo(gl, buffers.quad);
             gl.blendFunc(gl.ONE, gl.ZERO);
 
 
@@ -275,19 +327,19 @@ const FungCanvas = (props: FungProps) => {
             bindFramebufferInfo(gl);
             gl.clear(gl.COLOR_BUFFER_BIT);
 
-            if (debugMode) {
+            if (props.debug) {
                 // Draw the diffuse buffer (as debug)
-                gl.useProgram(texProgramInfo.program);
-                setBuffersAndAttributes(gl, texProgramInfo, quadBufferInfo);
-                setUniforms(texProgramInfo, uniforms);
+                gl.useProgram(programs.tex.program);
+                setBuffersAndAttributes(gl, programs.tex, buffers.quad);
+                setUniforms(programs.tex, uniforms);
                 gl.bindTexture(gl.TEXTURE_2D, flipFlop ? textures.diffuseTexture2 : textures.diffuseTexture1);
-                drawBufferInfo(gl, quadBufferInfo);
+                drawBufferInfo(gl, buffers.quad);
             } else {
                 // Draw the GoL buffer with colours - final output!
-                gl.useProgram(fungProgramInfo.program);
-                setBuffersAndAttributes(gl, fungProgramInfo, quadBufferInfo);
-                setUniforms(fungProgramInfo, uniforms);
-                drawBufferInfo(gl, quadBufferInfo);
+                gl.useProgram(programs.fung.program);
+                setBuffersAndAttributes(gl, programs.fung, buffers.quad);
+                setUniforms(programs.fung, uniforms);
+                drawBufferInfo(gl, buffers.quad);
             }
 
             renderId = requestAnimationFrame(render);
@@ -298,9 +350,21 @@ const FungCanvas = (props: FungProps) => {
         return () => {
             cancelAnimationFrame(renderId);
         }
-    }, []);
+    }, [
+        props.fromColor,
+        props.toColor,
+        props.debug,
+        props.agentCount,
+        props.moveSpeed,
+        props.turnSpeed,
+        props.senseDistance,
+        props.senseAngle,
+        props.diffusionRate,
+        props.evaporationRate,
+        props.densitySpread,
+    ]);
 
-    return <canvas ref={canvasRef} width={1280} height={720}></canvas>;
+    return <canvas ref={canvasRef} width={960} height={540}></canvas>;
 };
 
 export default FungCanvas;
