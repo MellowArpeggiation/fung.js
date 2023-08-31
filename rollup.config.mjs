@@ -2,7 +2,8 @@ import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import typescript from "@rollup/plugin-typescript";
 import dts from "rollup-plugin-dts";
-import string from "rollup-plugin-string";
+import { string } from "rollup-plugin-string";
+import image from "@rollup/plugin-image";
 
 import packageJson from "./package.json" assert { type: "json" };
 
@@ -22,17 +23,20 @@ export default [
             },
         ],
         plugins: [
+            string({
+                include: ["**/*.vert", "**/*.frag"],
+            }),
+            image(),
             resolve(),
             commonjs(),
             typescript({ tsconfig: "./tsconfig.json" }),
-            string({
-                include: ["**/*.vert", "**/*.frag"],
-            })
         ],
+        external: ["react", "react-dom"],
     },
     {
         input: "dist/esm/types/index.d.ts",
         output: [{ file: "dist/index.d.ts", format: "esm" }],
         plugins: [dts()],
+        external: ["react", "react-dom"],
     },
 ];
