@@ -4,8 +4,21 @@ export interface FungProps {
     label: string;
 }
 
-const FungCanvas = (props: FungProps) => {
-    return <button>{props.label}</button>;
-};
+type FungState = {
+
+}
+
+class FungCanvas extends React.Component<FungProps, FungState> {
+    state: FungState = {
+
+    };
+    render() {
+        return (
+            <button>
+                a{this.props.label}
+            </button>
+        );
+    }
+}
 
 export default FungCanvas;
