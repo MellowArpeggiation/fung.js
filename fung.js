@@ -110,7 +110,7 @@
         const diffuseProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['diffuse.frag']]);
         const golProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['golstep.frag']]);
         const drawGolProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['drawgol.frag']]);
-        const fungProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['fung.frag']])
+        const fungProgramInfo = twgl.createProgramInfo(gl, [sources['draw.vert'], sources['fung.frag']]);
 
 
         const quadBufferInfo = twgl.createBufferInfoFromArrays(gl, {

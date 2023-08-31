@@ -12,8 +12,12 @@ void main() {
 
     for (float i = 1.0; i < 1000.0; i += 1.0) {
         if (texture2D(wallMask, agentPosition).r < 0.5) break;
-        agentPosition = vec2(rand(gl_FragCoord.xy + i), rand(gl_FragCoord.xy + i * 1000.0));
+        agentPosition = vec2(rand(gl_FragCoord.xy + i), rand(gl_FragCoord.xy + i * 2.0));
     }
+
+    // Workaround for randomisation not working in a React context
+    // I uh... have no idea
+    agentPosition.y = 0.2 + agentPosition.y * 0.1;
 
     gl_FragColor = vec4(agentPosition, agentRotation, 1);
 }

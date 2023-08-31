@@ -7,6 +7,7 @@ const config: StorybookConfig = {
     "@storybook/addon-essentials",
     "@storybook/addon-onboarding",
     "@storybook/addon-interactions",
+    "twgl.js",
   ],
   framework: {
     name: "@storybook/react-webpack5",
@@ -14,6 +15,13 @@ const config: StorybookConfig = {
   },
   docs: {
     autodocs: "tag",
+  },
+  webpackFinal: async (config) => {
+    config.module?.rules?.push({
+      test: /\.(glsl|vs|fs|vert|frag)$/,
+      use: [ "raw-loader" ],
+    })
+    return config;
   },
 };
 export default config;
