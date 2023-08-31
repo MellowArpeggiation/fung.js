@@ -1,21 +1,22 @@
 import React, { useEffect, useRef } from "react";
 import { bindFramebufferInfo, createBufferInfoFromArrays, createFramebufferInfo, createProgramInfo, createTextures, drawBufferInfo, setBuffersAndAttributes, setUniforms } from "twgl.js";
 
-import vDraw from "../../../shader/draw.vert";
-import fDraw from "../../../shader/draw.frag";
-import fDrawRand from "../../../shader/draw-rand.frag";
-import fUpdateAgents from "../../../shader/update-agents.frag";
-import vDrawAgents from "../../../shader/draw-agents.vert";
-import fDrawAgents from "../../../shader/draw-agents.frag";
-import fDiffuse from "../../../shader/diffuse.frag";
-import fGolStep from "../../../shader/golstep.frag";
-import fDrawGol from "../../../shader/drawgol.frag";
-import fFung from "../../../shader/fung.frag";
+import vDraw from "../../shaders/draw.vert";
+import fDraw from "../../shaders/draw.frag";
+import fDrawRand from "../../shaders/draw-rand.frag";
+import fUpdateAgents from "../../shaders/update-agents.frag";
+import vDrawAgents from "../../shaders/draw-agents.vert";
+import fDrawAgents from "../../shaders/draw-agents.frag";
+import fDiffuse from "../../shaders/diffuse.frag";
+import fGolStep from "../../shaders/golstep.frag";
+import fDrawGol from "../../shaders/drawgol.frag";
+import fFung from "../../shaders/fung.frag";
 
 import wallMask from "../../../img/map.png";
 
 export interface FungProps {
-    label: string;
+    fromColor: string;
+    toColor: string;
 }
 
 const FungCanvas = (props: FungProps) => {
@@ -38,17 +39,8 @@ const FungCanvas = (props: FungProps) => {
     let diffusionRate = 32;
     const densitySpread = 0.8;
 
-    // Color options
-    let fromColor = [0, 1, 0, 1];
-    let toColor = [1, 1, 0, 1];
-
     const minFrameRate = 50;
 
-
-
-    const draw = gl => {
-
-    }
 
 
     // iOS Safari does this fucky thing where they say they support writing to floating point textures
@@ -56,13 +48,13 @@ const FungCanvas = (props: FungProps) => {
     // and also don't report any errors or give you any fucking information at all, they just truck on with 8 bits (OR LESS!) of precision
     // Yes, I tried gl.checkFramebufferStatus, it reports gl.FRAMEBUFFER_COMPLETE in all tests
     // So we have to just... guess
-    function getHighestFloat(gl) {
+    function getHighestFloat(gl: WebGLRenderingContext) {
         const isIOS = /(iPad|iPhone|iPod)/g.test(navigator.userAgent);
         const isAppleDevice = navigator.userAgent.includes('Macintosh');
         const isTouchScreen = navigator.maxTouchPoints >= 1;
         if (isIOS || (isAppleDevice && isTouchScreen)) {
             const halfFloatExtension = gl.getExtension("OES_texture_half_float");
-            return halfFloatExtension.HALF_FLOAT_OES;
+            return halfFloatExtension?.HALF_FLOAT_OES;
         }
 
         const floatExtension = gl.getExtension("OES_texture_float");
@@ -78,7 +70,28 @@ const FungCanvas = (props: FungProps) => {
         return null;
     }
 
+    const toRGBA = (color: string) => {
+        const div = document.createElement('div');
+        div.style.backgroundColor = color;
+        document.body.appendChild(div);
+        let rgba = getComputedStyle(div).getPropertyValue('background-color');
+        div.remove();
+        
+        if (rgba.indexOf('rgba') === -1) {
+            rgba += ',255'; // convert 'rgb(R,G,B)' to 'rgb(R,G,B)A' which looks awful but will pass the regxep below
+        }
+
+        const match = rgba.match(/[\.\d]+/g) || [0,0,0,0];
+        
+        return match.map(a => {
+            return (+a) / 255
+        });
+    }
+
     useEffect(() => {
+        const fromColor = toRGBA(props.fromColor);
+        const toColor = toRGBA(props.toColor);
+
         const canvas = canvasRef.current;
         const gl = canvas?.getContext("webgl");
         if (!gl) {
@@ -87,7 +100,10 @@ const FungCanvas = (props: FungProps) => {
         }
 
         const floatFormat = getHighestFloat(gl);
-
+        if (floatFormat == null) {
+            alert("Your browser does not support floating point textures");
+            return;
+        }
 
         const texProgramInfo = createProgramInfo(gl, [vDraw, fDraw]);
         const initProgramInfo = createProgramInfo(gl, [vDraw, fDrawRand]);
@@ -119,7 +135,7 @@ const FungCanvas = (props: FungProps) => {
             diffuseTexture2: { width: 640, height: 360 },
             golTexture1: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
             golTexture2: { minMag: gl.NEAREST, width: gl.canvas.width, height: gl.canvas.height },
-            wallMask: { minMag: gl.NEAREST, src: wallMask, flipY: true },
+            wallMask: { minMag: gl.NEAREST, src: wallMask, flipY: 1 },
         });
 
 
@@ -166,7 +182,13 @@ const FungCanvas = (props: FungProps) => {
 
         let lastTime = 0;
         let flipFlop = false;
-        function render(time) {
+        let renderId: number;
+        function render(time: number) {
+            if (!gl) {
+                alert("WebGL has been disabled");
+                return;
+            }
+
             time = time * 0.001;
             let dt = Math.min(time - lastTime, minDt);
             lastTime = time;
@@ -268,13 +290,17 @@ const FungCanvas = (props: FungProps) => {
                 drawBufferInfo(gl, quadBufferInfo);
             }
 
-            requestAnimationFrame(render);
+            renderId = requestAnimationFrame(render);
         }
 
-        requestAnimationFrame(render);
+        renderId = requestAnimationFrame(render);
+
+        return () => {
+            cancelAnimationFrame(renderId);
+        }
     }, []);
 
-    return <canvas ref={canvasRef} width={640} height={360}></canvas>;
+    return <canvas ref={canvasRef} width={1280} height={720}></canvas>;
 };
 
 export default FungCanvas;
