@@ -2,6 +2,7 @@ precision mediump float;
 
 uniform sampler2D previousGolFrame;
 uniform sampler2D previousDiffuseFrame;
+uniform sampler2D dither;
 uniform vec2 resolution;
 
 void main() {
@@ -11,7 +12,9 @@ void main() {
     vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
 
     if (value > 0.8) { // Add
-        color = vec4(1.0);
+        float addValue = texture2D(dither, gl_FragCoord.xy / 128.0).r * 0.2 - 0.1;
+        value += addValue;
+        color = vec4(step(0.8, value));
     } else if (value < 0.05) { // Clear
         color = vec4(0.0);
     }

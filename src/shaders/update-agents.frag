@@ -11,7 +11,6 @@ uniform float dt;
 
 uniform vec2 dimensions;
 
-uniform float agentCount;
 uniform float moveSpeed;
 uniform float turnSpeed;
 uniform float senseDistance;
@@ -30,8 +29,7 @@ vec2 sense(vec2 pos, float angle, float angleOffset) {
 }
 
 void main() {
-    float agentId = gl_FragCoord.x / agentCount;
-    vec4 agentCoords = texture2D(previousAgentFrame, vec2(agentId, 0));
+    vec4 agentCoords = texture2D(previousAgentFrame, gl_FragCoord.xy / dimensions);
 
     vec2 agentPosition = agentCoords.xy;
     float agentRotation = agentCoords.z * TAU;
