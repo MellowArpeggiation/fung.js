@@ -3,7 +3,7 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com/mellowarpeggiation"
   },
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Provides an HTML5 Canvas element that draws the FUNG",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
