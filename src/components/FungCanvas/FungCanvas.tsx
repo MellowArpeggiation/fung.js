@@ -303,6 +303,7 @@ const FungCanvas = (inputProps: Partial<FungProps>) => {
             glInfoRef.current = init(gl, props.agentCount, internalWidth, internalHeight);
             dimRef.current = props.width;
             portraitRef.current = props.portrait || false;
+            flipFlopRef.current = false;
         }
 
         if (glInfoRef.current == null) {
