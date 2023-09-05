@@ -1,7 +1,8 @@
 # FUNG.js
 
 See it in action: [rpg8.me/fung](http://rpg8.me/fung)
-![](https://github.com/MellowArpeggiation/fung.js/blob/main/screenshot.png)
+
+[![FUNG growing in cyan and magenta](https://github.com/MellowArpeggiation/fung.js/blob/main/screenshot.png)](http://rpg8.me/fung)
 
 An HTML5 Canvas React element that renders the FUNG, a slime mould cellular automata rendered onto a Game of Life (GoL) layer.
 
